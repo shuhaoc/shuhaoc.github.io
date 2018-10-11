@@ -1,0 +1,1083 @@
+<!DOCTYPE html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<html class="theme-next mist" lang="zh-Hans">
+<head>
+  <meta charset="UTF-8"/>
+<meta http-equiv="X-UA-Compatible" content="IE=edge" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2"/>
+<meta name="theme-color" content="#222">
+
+
+
+
+
+
+
+
+
+
+
+
+<meta http-equiv="Cache-Control" content="no-transform" />
+<meta http-equiv="Cache-Control" content="no-siteapp" />
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+<link href="http://oyn0cy9wg.bkt.clouddn.com/blog/lib/font-awesome/css/font-awesome.min.css" rel="stylesheet" type="text/css" />
+
+<link href="/css/main.css?v=6.4.0" rel="stylesheet" type="text/css" />
+
+
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png?v=6.4.0">
+
+
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png?v=6.4.0">
+
+
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png?v=6.4.0">
+
+
+  <link rel="mask-icon" href="/images/logo.svg?v=6.4.0" color="#222">
+
+
+
+
+
+
+
+
+
+<script type="text/javascript" id="hexo.configurations">
+  var NexT = window.NexT || {};
+  var CONFIG = {
+    root: '/',
+    scheme: 'Mist',
+    version: '6.4.0',
+    sidebar: {"position":"left","display":"post","offset":12,"b2t":false,"scrollpercent":false,"onmobile":false},
+    fancybox: false,
+    fastclick: false,
+    lazyload: false,
+    tabs: true,
+    motion: {"enable":false,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},
+    algolia: {
+      applicationID: '',
+      apiKey: '',
+      indexName: '',
+      hits: {"per_page":10},
+      labels: {"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}
+    }
+  };
+</script>
+
+
+  
+
+
+
+
+  <meta name="description" content="幂等性概念在分布式系统中，幂等性是一致性方面的一个重要概念。  幂等（idempotent、idempotence）是一个数学与计算机学概念，常见于抽象代数中。在编程中一个幂等操作的特点是其任意多次执行所产生的影响均与一次执行的影响相同。  所谓“影响相同”，不是要求返回值完全相同，而且是指后续多余的调用对系统的数据一致性不造成破坏。对于写入类操作，如果第一次写入是成功的，后续的写入应该抛出异常或">
+<meta name="keywords" content="MySQL,数据库,分布式系统,一致性,Java,分布式事务,DB">
+<meta property="og:type" content="article">
+<meta property="og:title" content="使用数据库唯一键实现事务幂等性">
+<meta property="og:url" content="http://www.caosh.me/be-tech/idempotence-using-unique-key/index.html">
+<meta property="og:site_name" content="Blog.new &#39;书豪&#39;">
+<meta property="og:description" content="幂等性概念在分布式系统中，幂等性是一致性方面的一个重要概念。  幂等（idempotent、idempotence）是一个数学与计算机学概念，常见于抽象代数中。在编程中一个幂等操作的特点是其任意多次执行所产生的影响均与一次执行的影响相同。  所谓“影响相同”，不是要求返回值完全相同，而且是指后续多余的调用对系统的数据一致性不造成破坏。对于写入类操作，如果第一次写入是成功的，后续的写入应该抛出异常或">
+<meta property="og:locale" content="zh-Hans">
+<meta property="og:image" content="http://www.caosh.me/be-tech/idempotence-using-unique-key/flow.png">
+<meta property="og:updated_time" content="2018-08-08T08:34:00.701Z">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="使用数据库唯一键实现事务幂等性">
+<meta name="twitter:description" content="幂等性概念在分布式系统中，幂等性是一致性方面的一个重要概念。  幂等（idempotent、idempotence）是一个数学与计算机学概念，常见于抽象代数中。在编程中一个幂等操作的特点是其任意多次执行所产生的影响均与一次执行的影响相同。  所谓“影响相同”，不是要求返回值完全相同，而且是指后续多余的调用对系统的数据一致性不造成破坏。对于写入类操作，如果第一次写入是成功的，后续的写入应该抛出异常或">
+<meta name="twitter:image" content="http://www.caosh.me/be-tech/idempotence-using-unique-key/flow.png">
+
+
+
+
+
+
+  <link rel="canonical" href="http://www.caosh.me/be-tech/idempotence-using-unique-key/"/>
+
+
+
+<script type="text/javascript" id="page.configurations">
+  CONFIG.page = {
+    sidebar: "",
+  };
+</script>
+
+  <title>使用数据库唯一键实现事务幂等性 | Blog.new '书豪'</title>
+  
+
+
+
+
+
+
+
+
+
+  <noscript>
+  <style type="text/css">
+    .use-motion .motion-element,
+    .use-motion .brand,
+    .use-motion .menu-item,
+    .sidebar-inner,
+    .use-motion .post-block,
+    .use-motion .pagination,
+    .use-motion .comments,
+    .use-motion .post-header,
+    .use-motion .post-body,
+    .use-motion .collection-title { opacity: initial; }
+
+    .use-motion .logo,
+    .use-motion .site-title,
+    .use-motion .site-subtitle {
+      opacity: initial;
+      top: initial;
+    }
+
+    .use-motion {
+      .logo-line-before i { left: initial; }
+      .logo-line-after i { right: initial; }
+    }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage" lang="zh-Hans">
+
+  
+  
+    
+  
+
+  <div class="container sidebar-position-left page-post-detail">
+    <div class="headband"></div>
+
+    <header id="header" class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-wrapper">
+  <div class="site-meta ">
+    
+
+    <div class="custom-logo-site-title">
+      <a href="/" class="brand" rel="start">
+        <span class="logo-line-before"><i></i></span>
+        <span class="site-title">Blog.new '书豪'</span>
+        <span class="logo-line-after"><i></i></span>
+      </a>
+    </div>
+    
+      
+        <h1 class="site-subtitle" itemprop="description">技术博客</h1>
+      
+    
+  </div>
+
+  <div class="site-nav-toggle">
+    <button aria-label="Toggle navigation bar">
+      <span class="btn-bar"></span>
+      <span class="btn-bar"></span>
+      <span class="btn-bar"></span>
+    </button>
+  </div>
+</div>
+
+
+
+<nav class="site-nav">
+  
+    <ul id="menu" class="menu">
+      
+        
+        
+        
+          
+          <li class="menu-item menu-item-home">
+    <a href="/" rel="section">
+      <i class="menu-item-icon fa fa-fw fa-home"></i> <br />Home</a>
+  </li>
+        
+        
+        
+          
+          <li class="menu-item menu-item-categories">
+    <a href="/categories/" rel="section">
+      <i class="menu-item-icon fa fa-fw fa-th"></i> <br />Categories</a>
+  </li>
+        
+        
+        
+          
+          <li class="menu-item menu-item-tags">
+    <a href="/tags/" rel="section">
+      <i class="menu-item-icon fa fa-fw fa-tags"></i> <br />Tags</a>
+  </li>
+        
+        
+        
+          
+          <li class="menu-item menu-item-archives">
+    <a href="/archives/" rel="section">
+      <i class="menu-item-icon fa fa-fw fa-archive"></i> <br />Archives</a>
+  </li>
+        
+        
+        
+          
+          <li class="menu-item menu-item-about">
+    <a href="/about/" rel="section">
+      <i class="menu-item-icon fa fa-fw fa-user"></i> <br />About</a>
+  </li>
+
+      
+      
+    </ul>
+  
+
+  
+    
+
+  
+
+  
+</nav>
+
+
+
+  
+
+
+
+</div>
+    </header>
+
+    
+
+
+    <main id="main" class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+          <div id="content" class="content">
+            
+
+  <div id="posts" class="posts-expand">
+    
+
+  
+
+  
+  
+  
+
+  
+
+  <article class="post post-type-normal" itemscope itemtype="http://schema.org/Article">
+  
+  
+  
+  <div class="post-block">
+    <link itemprop="mainEntityOfPage" href="http://www.caosh.me/be-tech/idempotence-using-unique-key/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="name" content="曹书豪">
+      <meta itemprop="description" content="专注于互联网后端技术与可复用代码">
+      <meta itemprop="image" content="/images/avatar.gif">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="Blog.new '书豪'">
+    </span>
+
+    
+      <header class="post-header">
+
+        
+        
+          <h2 class="post-title" itemprop="name headline">使用数据库唯一键实现事务幂等性
+              
+            
+          </h2>
+        
+
+        <div class="post-meta">
+          <span class="post-time">
+
+            
+            
+            
+
+            
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">Posted on</span>
+              
+
+              
+                
+              
+
+              <time title="Created: 2017-10-15 23:29:55" itemprop="dateCreated datePublished" datetime="2017-10-15T23:29:55+08:00">2017-10-15</time>
+            
+
+            
+          </span>
+
+          
+            <span class="post-category" >
+            
+              <span class="post-meta-divider">|</span>
+            
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">In</span>
+              
+              
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing"><a href="/categories/be-tech/" itemprop="url" rel="index"><span itemprop="name">后端技术</span></a></span>
+
+                
+                
+              
+            </span>
+          
+
+          
+            
+          
+
+          
+          
+             <span id="/be-tech/idempotence-using-unique-key/" class="leancloud_visitors" data-flag-title="使用数据库唯一键实现事务幂等性">
+               <span class="post-meta-divider">|</span>
+               <span class="post-meta-item-icon">
+                 <i class="fa fa-eye"></i>
+               </span>
+               
+                 <span class="post-meta-item-text">Views: </span>
+               
+                 <span class="leancloud-visitors-count"></span>
+             </span>
+          
+
+          
+
+          
+
+          
+
+        </div>
+      </header>
+    
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+      
+
+      
+        <h2 id="幂等性"><a href="#幂等性" class="headerlink" title="幂等性"></a>幂等性</h2><h3 id="概念"><a href="#概念" class="headerlink" title="概念"></a>概念</h3><p>在分布式系统中，幂等性是一致性方面的一个重要概念。</p>
+<blockquote>
+<p>幂等（idempotent、idempotence）是一个数学与计算机学概念，常见于抽象代数中。<br>在编程中一个幂等操作的特点是其任意多次执行所产生的影响均与一次执行的影响相同。</p>
+</blockquote>
+<p>所谓“影响相同”，不是要求返回值完全相同，而且是指后续多余的调用对系统的数据一致性不造成破坏。对于写入类操作，如果第一次写入是成功的，后续的写入应该抛出异常或者空操作，或者执行了写入但是未对数据造成变化。对于读取类操作，需要保证其实现上是真正的读取，不能在读操作中夹带写操作。</p>
+<h3 id="场景"><a href="#场景" class="headerlink" title="场景"></a>场景</h3><p>需要实现幂等性的典型场景有以下两种：</p>
+<ol>
+<li>客户端发起的请求可能需要重试，请求的后端处理需要保证幂等</li>
+<li>后端系统使用同步RPC调用或异步消息实现分布式事务，消息的消费者需要保证幂等</li>
+</ol>
+<a id="more"></a>
+<h3 id="必要性"><a href="#必要性" class="headerlink" title="必要性"></a>必要性</h3><p><strong>重试是降低系统失败率的重要手段</strong>。</p>
+<p>广义上的RPC，包括客户端对服务端的api调用、后端系统的内网调用、跨机房调用等。一次RPC大体上包括三个步骤：发送请求、执行过程、接收响应。由于网络传输存在不确定性，导致RPC调用存在一个陷阱，即有可能出现第一、第二步都成功、第三步失败的情况，此时RPC的调用方由于接收不到结果，无法判断被调用方是否已经完成过程调用，只能按失败处理。</p>
+<p>通常RPC调用方会针对网络失败进行重试。在上述情况下，如果远端代码不具备幂等性，却进行了重试，将导致系统的数据一致性遭到破坏，本该只执行一次的事务被执行了两次。</p>
+<p>对于异步消息的消费者来讲，也有同样的问题。在手动ACK的情况下，消息的处理需要接收消息、处理消息、ACK三步，ACK的失败也会导致相同的问题。</p>
+<p>在交易类的系统（比如电商、证券等）中，对非幂等的远程过程进行重试，可能会导致超买超卖，对客户造成经济损失。</p>
+<p>互联网应用一般都是提供7*24服务的，而互联网应用本身又是快速迭代，后端系统是随时有可能需要进行发布的。发布等同于一次宕机（进程被kill），这意味着对于互联网应用的后端系统，宕机是常态而非特例。这也是幂等性和重试的必要性来源之一。</p>
+<h3 id="可重入性"><a href="#可重入性" class="headerlink" title="可重入性"></a>可重入性</h3><p>幂等性在技术上同时要求可重入性。在分布式系统中，重试和并发都是常态，允许多次调用代码也应该支持并发调用。分布式锁（包括数据库锁）可以解决这一问题。</p>
+<h2 id="技术实现"><a href="#技术实现" class="headerlink" title="技术实现"></a>技术实现</h2><h3 id="本地事务的幂等性"><a href="#本地事务的幂等性" class="headerlink" title="本地事务的幂等性"></a>本地事务的幂等性</h3><p>考虑简单的增删改查四类操作：</p>
+<ul>
+<li>select，天生幂等</li>
+<li>insert，数据库自增主键时不具备幂等</li>
+<li>基于主键update，具备幂等，但是带查询的更新除外（形如<code>update t set x = x + 1 where ...</code>)</li>
+<li>基于主建delete，具备幂等</li>
+<li>非基于主键的udpate/delete操作，需要具体问题具体分析</li>
+</ul>
+<p>在分布式系统中，带条件的或带子查询的增删改操作应当慎用，除了非幂等性问题以外，还有可能带来死锁问题。</p>
+<p>很显然，如果一个事务中所有数据库操作都是幂等操作，且不存在外部调用，那么该事务一定也是幂等的。</p>
+<p>如果事务中存在非幂等的数据库操作，唯一键为本地事务的幂等性提供了实现基础。<strong>使用带有唯一键的去重表，在事务中先执行insert去重表，再执行其他业务操作，然后提交事务，事务过程中出现异常回滚事务</strong>，可以保证事务的幂等性。</p>
+<p><img src="flow.png" alt="流程图"></p>
+<p>考虑两种失败的情况。</p>
+<ol>
+<li>Insert去重表失败，事务回滚，无任何影响，调用方应停止重试</li>
+<li>Insert去重表成功，业务操作失败，事务回滚，之前插入的记录也将消失，无任何影响，调用方可以选择重试</li>
+</ol>
+<p>以上两种失败的情况下，事务的幂等性是可以保证的。</p>
+<p>补充说明，在使用JDBC连接MySQL的情况下，如果程序需要捕获唯一键冲突异常，可以<code>catch</code> <code>com.mysql.jdbc.exceptions.jdbc4.MySQLIntegrityConstraintViolationException</code>。</p>
+<h3 id="本地事务并发情况"><a href="#本地事务并发情况" class="headerlink" title="本地事务并发情况"></a>本地事务并发情况</h3><p>在并发的情况下，如果两个（数据库的）客户端同时执行该事务且唯一键相同，此时唯一键能直到分布式锁的作用。</p>
+<p>这里以示例来说明。打开两个命令行终端，连接同一个MySQL数据库，称之为A和B。</p>
+<p>先在任意一端创建测试表<br><figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">create</span> <span class="keyword">table</span> tt (<span class="keyword">id</span> <span class="built_in">int</span> primary <span class="keyword">key</span>);</span><br></pre></td></tr></table></figure></p>
+<p>在两端依次执行<br><figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">set</span> autocommit = <span class="literal">false</span>;</span><br></pre></td></tr></table></figure></p>
+<p>在A端执行<br><figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">insert</span> <span class="keyword">into</span> tt (<span class="keyword">id</span>) <span class="keyword">values</span> (<span class="number">1</span>);</span><br></pre></td></tr></table></figure></p>
+<p>返回<br><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">Query OK, 1 row affected (0.00 sec)</span><br></pre></td></tr></table></figure></p>
+<p>在B端执行同样的insert语句<br><figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">insert</span> <span class="keyword">into</span> tt (<span class="keyword">id</span>) <span class="keyword">values</span> (<span class="number">1</span>);</span><br></pre></td></tr></table></figure></p>
+<p>此时B端会挂起。</p>
+<p>如果在A端执行<br><figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">commit</span>;</span><br></pre></td></tr></table></figure></p>
+<p>A端会提交成功，而B端会立即结束挂起，报错，等于获取锁失败。<br><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">ERROR 1062 (23000): Duplicate entry &apos;1&apos; for key &apos;PRIMARY&apos;</span><br></pre></td></tr></table></figure></p>
+<p>如果A端执行<br><figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">rollback</span>;</span><br></pre></td></tr></table></figure></p>
+<p>或直接关闭终端，B端则会立即结束挂起且insert成功，等于获取锁成功。</p>
+<p>通过这个实验，同时也可以得出，数据库的唯一键可以用于实现通用的分布式锁。</p>
+<h3 id="分布式事务的幂等性"><a href="#分布式事务的幂等性" class="headerlink" title="分布式事务的幂等性"></a>分布式事务的幂等性</h3><p>要保证分布式事务的幂等性，需要各个子事务都保证幂等性，否则整体幂等性的很难实现。</p>
+<p>在基于关系型数据库的系统中，分布式事务最终还是要依靠数据库的本地事务来实现事务的ACID。</p>
+<p>考虑存在A、B两个子系统分别实现各自的事务，需要整合为一个分布式事务，其中A系统的本地事务基于MySQL实现，保证幂等；B系统的本地事务也保证幂等，对外提供RPC服务接口，其具体实现这里不关心。</p>
+<p>在这种情况下，有一个简单的不需要事务仲裁者的分布式事务方案，就是在A事务中嵌套对B的调用。具体流程是<strong>A事务先执行本地数据库操作，再调用B接口，然后提交事务</strong>。</p>
+<p>同样，考虑三种失败的情况。</p>
+<ol>
+<li>A本地操作失败，事务回滚，无任何影响</li>
+<li>A本地操作成功，调用B失败，如果是唯一性冲突导致的失败，A正常提交；如果是其他失败，事务回滚，此时外部调用方可以重试</li>
+<li>很极端的情况，A本地操作成功，调用B成功，事务提交失败，此时外部调用方可以重试</li>
+</ol>
+<p>这个方案并不是一个高可靠的解决方案，但是实现上非常简单。</p>
+<p>其缺陷在于如果外部调用方没有进行重试，那么可能会产生对B的多余调用。当然，如果在业务上对B的少量多余调用是可接受的，比如B是次要业务，那这个方案也是可以用的。</p>
+<p>另外由于在DB事务中嵌套了耗时操作（RPC调用），事务的耗时也因此延长，数据库连接被事务占用不能复用，系统的吞吐量会受到影响。</p>
+<p>分布式事务不可能实现绝对的一致性。我们应该从概率的角度思考问题，如果能将不一致的概率降到最低，比如保证幂等性加重试，再辅以业务监控和人工干预，就可以实现系统整体上较高的一致性。</p>
+<h3 id="幂等性设计"><a href="#幂等性设计" class="headerlink" title="幂等性设计"></a>幂等性设计</h3><p><strong>幂等性设计不能脱离业务来讨论</strong>。一般情况下，去重表同时也是业务数据表。对于唯一键，这里提供两种设计思路：</p>
+<ol>
+<li>在请求参数中附带唯一标识作为唯一键，唯一标识可以由业务字段加时间戳低位拼接而成，或者使用snowflake、UUID等ID生成算法</li>
+<li>找出业务本身的唯一约束。比如一个客户对同一只新股只能申购一次，那么客户号加申购代码可以组成唯一键</li>
+</ol>
+
+      
+    </div>
+
+    
+
+    
+    
+    
+
+    
+
+    
+
+    
+      <div>
+        <ul class="post-copyright">
+  <li class="post-copyright-author">
+    <strong>Post author:  </strong>曹书豪</li>
+  <li class="post-copyright-link">
+    <strong>Post link: </strong>
+    <a href="http://www.caosh.me/be-tech/idempotence-using-unique-key/" title="使用数据库唯一键实现事务幂等性">http://www.caosh.me/be-tech/idempotence-using-unique-key/</a>
+  </li>
+  <li class="post-copyright-license">
+    <strong>Copyright Notice:  </strong>All articles in this blog are licensed under <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" rel="external nofollow" target="_blank">CC BY-NC-SA 4.0</a> unless stating additionally.</li>
+</ul>
+
+      </div>
+    
+
+    <footer class="post-footer">
+      
+        <div class="post-tags">
+          
+            <a href="/tags/MySQL/" rel="tag"># MySQL</a>
+          
+            <a href="/tags/数据库/" rel="tag"># 数据库</a>
+          
+            <a href="/tags/分布式系统/" rel="tag"># 分布式系统</a>
+          
+            <a href="/tags/一致性/" rel="tag"># 一致性</a>
+          
+            <a href="/tags/Java/" rel="tag"># Java</a>
+          
+            <a href="/tags/分布式事务/" rel="tag"># 分布式事务</a>
+          
+            <a href="/tags/DB/" rel="tag"># DB</a>
+          
+        </div>
+      
+
+      
+      
+      
+
+      
+        <div class="post-nav">
+          <div class="post-nav-next post-nav-item">
+            
+              <a href="/solution/joda-datetime-to-jdk-date/" rel="next" title="Joda DateTime转为JDK Date的陷阱">
+                <i class="fa fa-chevron-left"></i> Joda DateTime转为JDK Date的陷阱
+              </a>
+            
+          </div>
+
+          <span class="post-nav-divider"></span>
+
+          <div class="post-nav-prev post-nav-item">
+            
+              <a href="/solution/mvn-transitive-dependencies/" rel="prev" title="Maven报“transitive dependencies (if any) will not be available”问题">
+                Maven报“transitive dependencies (if any) will not be available”问题 <i class="fa fa-chevron-right"></i>
+              </a>
+            
+          </div>
+        </div>
+      
+
+      
+      
+    </footer>
+  </div>
+  
+  
+  
+  </article>
+
+
+  </div>
+
+
+          </div>
+          
+
+  
+
+
+
+        </div>
+        
+          
+  
+  <div class="sidebar-toggle">
+    <div class="sidebar-toggle-line-wrap">
+      <span class="sidebar-toggle-line sidebar-toggle-line-first"></span>
+      <span class="sidebar-toggle-line sidebar-toggle-line-middle"></span>
+      <span class="sidebar-toggle-line sidebar-toggle-line-last"></span>
+    </div>
+  </div>
+
+  <aside id="sidebar" class="sidebar">
+    
+    <div class="sidebar-inner">
+
+      
+
+      
+        <ul class="sidebar-nav motion-element">
+          <li class="sidebar-nav-toc sidebar-nav-active" data-target="post-toc-wrap">
+            Table of Contents
+          </li>
+          <li class="sidebar-nav-overview" data-target="site-overview-wrap">
+            Overview
+          </li>
+        </ul>
+      
+
+      <section class="site-overview-wrap sidebar-panel">
+        <div class="site-overview">
+          <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+            
+              <p class="site-author-name" itemprop="name">曹书豪</p>
+              <p class="site-description motion-element" itemprop="description">专注于互联网后端技术与可复用代码</p>
+          </div>
+
+          
+            <nav class="site-state motion-element">
+              
+                <div class="site-state-item site-state-posts">
+                
+                  <a href="/archives/">
+                
+                    <span class="site-state-item-count">15</span>
+                    <span class="site-state-item-name">posts</span>
+                  </a>
+                </div>
+              
+
+              
+                
+                
+                <div class="site-state-item site-state-categories">
+                  <a href="/categories/index.html">
+                    
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                    <span class="site-state-item-count">4</span>
+                    <span class="site-state-item-name">categories</span>
+                  </a>
+                </div>
+              
+
+              
+                
+                
+                <div class="site-state-item site-state-tags">
+                  <a href="/tags/index.html">
+                    
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                    <span class="site-state-item-count">36</span>
+                    <span class="site-state-item-name">tags</span>
+                  </a>
+                </div>
+              
+            </nav>
+          
+
+          
+
+          
+            <div class="links-of-author motion-element">
+              
+                <span class="links-of-author-item">
+                  <a href="https://github.com/shuhaoc" target="_blank" title="GitHub" rel="external nofollow"><i class="fa fa-fw fa-github"></i>GitHub</a>
+                  
+                </span>
+              
+                <span class="links-of-author-item">
+                  <a href="mailto:this@caosh.me" target="_blank" title="E-Mail" rel="external nofollow"><i class="fa fa-fw fa-envelope"></i>E-Mail</a>
+                  
+                </span>
+              
+            </div>
+          
+
+          
+          
+
+          
+          
+            <div class="links-of-blogroll motion-element links-of-blogroll-block">
+              <div class="links-of-blogroll-title">
+                <i class="fa  fa-fw fa-link"></i>
+                Links
+              </div>
+              <ul class="links-of-blogroll-list">
+                
+                  <li class="links-of-blogroll-item">
+                    <a href="https://www.dozer.cc/" title="Dozer" target="_blank">Dozer</a>
+                  </li>
+                
+                  <li class="links-of-blogroll-item">
+                    <a href="https://roc-wong.github.io/" title="Roc wong" target="_blank">Roc wong</a>
+                  </li>
+                
+                  <li class="links-of-blogroll-item">
+                    <a href="http://jingege.me/" title="晋哥哥的私房钱" target="_blank">晋哥哥的私房钱</a>
+                  </li>
+                
+                  <li class="links-of-blogroll-item">
+                    <a href="https://blog.atcumt.com/" title="翔·工作室" target="_blank">翔·工作室</a>
+                  </li>
+                
+              </ul>
+            </div>
+          
+
+          
+            
+          
+          
+
+        </div>
+      </section>
+
+      
+      <!--noindex-->
+        <section class="post-toc-wrap motion-element sidebar-panel sidebar-panel-active">
+          <div class="post-toc">
+
+            
+              
+            
+
+            
+              <div class="post-toc-content"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#幂等性"><span class="nav-number">1.</span> <span class="nav-text">幂等性</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#概念"><span class="nav-number">1.1.</span> <span class="nav-text">概念</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#场景"><span class="nav-number">1.2.</span> <span class="nav-text">场景</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#必要性"><span class="nav-number">1.3.</span> <span class="nav-text">必要性</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#可重入性"><span class="nav-number">1.4.</span> <span class="nav-text">可重入性</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#技术实现"><span class="nav-number">2.</span> <span class="nav-text">技术实现</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#本地事务的幂等性"><span class="nav-number">2.1.</span> <span class="nav-text">本地事务的幂等性</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#本地事务并发情况"><span class="nav-number">2.2.</span> <span class="nav-text">本地事务并发情况</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#分布式事务的幂等性"><span class="nav-number">2.3.</span> <span class="nav-text">分布式事务的幂等性</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#幂等性设计"><span class="nav-number">2.4.</span> <span class="nav-text">幂等性设计</span></a></li></ol></li></ol></div>
+            
+
+          </div>
+        </section>
+      <!--/noindex-->
+      
+
+      
+
+    </div>
+  </aside>
+
+
+        
+      </div>
+    </main>
+
+    <footer id="footer" class="footer">
+      <div class="footer-inner">
+        <div class="copyright">&copy; 2017 – <span itemprop="copyrightYear">2018</span>
+  <span class="with-love" id="animate">
+    <i class="fa fa-user"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">曹书豪</span>
+
+  
+
+  
+</div>
+
+
+  
+
+
+
+  <div class="powered-by">Powered by <a class="theme-link" target="_blank" rel="external nofollow" href="https://hexo.io">Hexo</a> v3.7.1</div>
+
+
+
+  <span class="post-meta-divider">|</span>
+
+
+
+  <div class="theme-info">Theme – <a class="theme-link" target="_blank" rel="external nofollow" href="https://theme-next.org">NexT.Mist</a> v6.4.0</div>
+
+
+
+
+        
+
+
+
+
+
+
+
+
+        
+      </div>
+    </footer>
+
+    
+      <div class="back-to-top">
+        <i class="fa fa-arrow-up"></i>
+        
+      </div>
+    
+
+    
+	
+    
+
+    
+  </div>
+
+  
+
+<script type="text/javascript">
+  if (Object.prototype.toString.call(window.Promise) !== '[object Function]') {
+    window.Promise = null;
+  }
+</script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+  
+    <script type="text/javascript" src="http://oyn0cy9wg.bkt.clouddn.com/blog/lib/jquery/index.js"></script>
+  
+
+  
+  
+    <script type="text/javascript" src="http://oyn0cy9wg.bkt.clouddn.com/blog/lib/velocity/velocity.min.js"></script>
+  
+
+  
+  
+    <script type="text/javascript" src="http://oyn0cy9wg.bkt.clouddn.com/blog/lib/velocity/velocity.ui.min.js"></script>
+  
+
+
+  
+
+
+  <script type="text/javascript" src="/js/src/utils.js?v=6.4.0"></script>
+
+  <script type="text/javascript" src="/js/src/motion.js?v=6.4.0"></script>
+
+
+
+  
+  
+
+  
+  <script type="text/javascript" src="/js/src/scrollspy.js?v=6.4.0"></script>
+<script type="text/javascript" src="/js/src/post-details.js?v=6.4.0"></script>
+
+
+
+  
+
+
+  <script type="text/javascript" src="/js/src/bootstrap.js?v=6.4.0"></script>
+
+
+
+  
+
+
+
+  
+
+
+
+
+
+
+
+
+
+
+  
+
+
+
+
+
+  
+
+  
+  <script>
+    
+    function addCount(Counter) {
+      var $visitors = $(".leancloud_visitors");
+      var url = $visitors.attr('id').trim();
+      var title = $visitors.attr('data-flag-title').trim();
+
+      Counter('get', '/classes/Counter', { where: JSON.stringify({ url }) })
+        .done(function ({ results }) {
+          if (results.length > 0) {
+            var counter = results[0];
+            
+            Counter('put', `/classes/Counter/${counter.objectId}`, JSON.stringify({ time: { "__op":"Increment", "amount":1 } }))
+            
+            .done(function () {
+                  var $element = $(document.getElementById(url));
+                  $element.find('.leancloud-visitors-count').text(counter.time + 1);
+            })
+            
+            .fail(function ({ responseJSON }) {
+                console.log('Failed to save Visitor num, with error message: ' + responseJSON.error);
+            })
+          } else {
+            
+              Counter('post', '/classes/Counter', JSON.stringify({ title: title, url: url, time: 1}))
+                .done(function () {
+                  var $element = $(document.getElementById(url));
+                  $element.find('.leancloud-visitors-count').text(1);
+                })
+                .fail(function () {
+                  console.log('Failed to create');
+                });
+            
+          }
+        })
+      .fail(function ({ responseJSON }) {
+        console.log('LeanCloud Counter Error:' + responseJSON.code + " " + responseJSON.error);
+      });
+    }
+    
+
+    $(function() {
+      $.get('https://app-router.leancloud.cn/2/route?appId=' + "TTmRFEaTeIaPpvpREjwBW7Us-gzGzoHsz")
+        .done(function ({ api_server }) {
+          var Counter = function (method, url, data) {
+            return $.ajax({
+              method: method,
+              url: `https://${api_server}/1.1${url}`,
+              headers: {
+                'X-LC-Id': "TTmRFEaTeIaPpvpREjwBW7Us-gzGzoHsz",
+                'X-LC-Key': "NGwl0ufyzGnytmSoJNbuS96J",
+                'Content-Type': 'application/json',
+              },
+              data: data,
+            });
+          };
+          
+          addCount(Counter);
+          
+        })
+    });
+  </script>
+
+
+
+  
+
+  
+
+  
+
+  
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  <script type="text/javascript">
+    if (window.location.href.indexOf('caosh.me') >= 0) {
+    var _hmt = _hmt || [];
+    (function() {
+      var hm = document.createElement("script");
+      hm.src = "https://hm.baidu.com/hm.js?d60ebc8b060b119190e1a76c13d255ed";
+      var s = document.getElementsByTagName("script")[0];
+      s.parentNode.insertBefore(hm, s);
+    })();
+    } else {
+    console.info('Test environment, remove baidu statistics js');
+    }
+  </script>
+</body>
+</html>

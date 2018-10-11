@@ -1,0 +1,1139 @@
+<!DOCTYPE html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<html class="theme-next mist" lang="zh-Hans">
+<head>
+  <meta charset="UTF-8"/>
+<meta http-equiv="X-UA-Compatible" content="IE=edge" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2"/>
+<meta name="theme-color" content="#222">
+
+
+
+
+
+
+
+
+
+
+
+
+<meta http-equiv="Cache-Control" content="no-transform" />
+<meta http-equiv="Cache-Control" content="no-siteapp" />
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+<link href="http://oyn0cy9wg.bkt.clouddn.com/blog/lib/font-awesome/css/font-awesome.min.css" rel="stylesheet" type="text/css" />
+
+<link href="/css/main.css?v=6.4.0" rel="stylesheet" type="text/css" />
+
+
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png?v=6.4.0">
+
+
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png?v=6.4.0">
+
+
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png?v=6.4.0">
+
+
+  <link rel="mask-icon" href="/images/logo.svg?v=6.4.0" color="#222">
+
+
+
+
+
+
+
+
+
+<script type="text/javascript" id="hexo.configurations">
+  var NexT = window.NexT || {};
+  var CONFIG = {
+    root: '/',
+    scheme: 'Mist',
+    version: '6.4.0',
+    sidebar: {"position":"left","display":"post","offset":12,"b2t":false,"scrollpercent":false,"onmobile":false},
+    fancybox: false,
+    fastclick: false,
+    lazyload: false,
+    tabs: true,
+    motion: {"enable":false,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},
+    algolia: {
+      applicationID: '',
+      apiKey: '',
+      indexName: '',
+      hits: {"per_page":10},
+      labels: {"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}
+    }
+  };
+</script>
+
+
+  
+
+
+
+
+  <meta name="description" content="前提MySQL数据库自带基于binlog的主从复制功能，在内网中实现数据备份、读写分离是比较容易的。但是，在跨机房环境下通过公网如此同步数据就会存在一些困难：  安全性：直接在公网上暴露3306端口显然存在安全性问题 网络稳定性：公网的网络抖动是常态，长连接难以维持 配置复杂：在TCP协议上一个端口只能暴露一个服务实例，在互联网出口上需要配置一堆不同的端口映射至不同的数据库服务器 扩展性：基于bi">
+<meta name="keywords" content="Canal,HTTP,MySQL,数据同步,数据库,分布式系统,一致性,高可用,幂等性">
+<meta property="og:type" content="article">
+<meta property="og:title" content="基于Canal使用HTTP协议跨机房公网同步数据">
+<meta property="og:url" content="http://www.caosh.me/be-tech/canal-sync-db-over-http/index.html">
+<meta property="og:site_name" content="Blog.new &#39;书豪&#39;">
+<meta property="og:description" content="前提MySQL数据库自带基于binlog的主从复制功能，在内网中实现数据备份、读写分离是比较容易的。但是，在跨机房环境下通过公网如此同步数据就会存在一些困难：  安全性：直接在公网上暴露3306端口显然存在安全性问题 网络稳定性：公网的网络抖动是常态，长连接难以维持 配置复杂：在TCP协议上一个端口只能暴露一个服务实例，在互联网出口上需要配置一堆不同的端口映射至不同的数据库服务器 扩展性：基于bi">
+<meta property="og:locale" content="zh-Hans">
+<meta property="og:image" content="http://www.caosh.me/be-tech/canal-sync-db-over-http/canal.jpg">
+<meta property="og:image" content="http://www.caosh.me/be-tech/canal-sync-db-over-http/canal-interaction.jpg">
+<meta property="og:image" content="http://www.caosh.me/be-tech/canal-sync-db-over-http/canal-ack.jpg">
+<meta property="og:image" content="http://www.caosh.me/be-tech/canal-sync-db-over-http/network.png">
+<meta property="og:updated_time" content="2018-08-08T08:34:00.698Z">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="基于Canal使用HTTP协议跨机房公网同步数据">
+<meta name="twitter:description" content="前提MySQL数据库自带基于binlog的主从复制功能，在内网中实现数据备份、读写分离是比较容易的。但是，在跨机房环境下通过公网如此同步数据就会存在一些困难：  安全性：直接在公网上暴露3306端口显然存在安全性问题 网络稳定性：公网的网络抖动是常态，长连接难以维持 配置复杂：在TCP协议上一个端口只能暴露一个服务实例，在互联网出口上需要配置一堆不同的端口映射至不同的数据库服务器 扩展性：基于bi">
+<meta name="twitter:image" content="http://www.caosh.me/be-tech/canal-sync-db-over-http/canal.jpg">
+
+
+
+
+
+
+  <link rel="canonical" href="http://www.caosh.me/be-tech/canal-sync-db-over-http/"/>
+
+
+
+<script type="text/javascript" id="page.configurations">
+  CONFIG.page = {
+    sidebar: "",
+  };
+</script>
+
+  <title>基于Canal使用HTTP协议跨机房公网同步数据 | Blog.new '书豪'</title>
+  
+
+
+
+
+
+
+
+
+
+  <noscript>
+  <style type="text/css">
+    .use-motion .motion-element,
+    .use-motion .brand,
+    .use-motion .menu-item,
+    .sidebar-inner,
+    .use-motion .post-block,
+    .use-motion .pagination,
+    .use-motion .comments,
+    .use-motion .post-header,
+    .use-motion .post-body,
+    .use-motion .collection-title { opacity: initial; }
+
+    .use-motion .logo,
+    .use-motion .site-title,
+    .use-motion .site-subtitle {
+      opacity: initial;
+      top: initial;
+    }
+
+    .use-motion {
+      .logo-line-before i { left: initial; }
+      .logo-line-after i { right: initial; }
+    }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage" lang="zh-Hans">
+
+  
+  
+    
+  
+
+  <div class="container sidebar-position-left page-post-detail">
+    <div class="headband"></div>
+
+    <header id="header" class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-wrapper">
+  <div class="site-meta ">
+    
+
+    <div class="custom-logo-site-title">
+      <a href="/" class="brand" rel="start">
+        <span class="logo-line-before"><i></i></span>
+        <span class="site-title">Blog.new '书豪'</span>
+        <span class="logo-line-after"><i></i></span>
+      </a>
+    </div>
+    
+      
+        <h1 class="site-subtitle" itemprop="description">技术博客</h1>
+      
+    
+  </div>
+
+  <div class="site-nav-toggle">
+    <button aria-label="Toggle navigation bar">
+      <span class="btn-bar"></span>
+      <span class="btn-bar"></span>
+      <span class="btn-bar"></span>
+    </button>
+  </div>
+</div>
+
+
+
+<nav class="site-nav">
+  
+    <ul id="menu" class="menu">
+      
+        
+        
+        
+          
+          <li class="menu-item menu-item-home">
+    <a href="/" rel="section">
+      <i class="menu-item-icon fa fa-fw fa-home"></i> <br />Home</a>
+  </li>
+        
+        
+        
+          
+          <li class="menu-item menu-item-categories">
+    <a href="/categories/" rel="section">
+      <i class="menu-item-icon fa fa-fw fa-th"></i> <br />Categories</a>
+  </li>
+        
+        
+        
+          
+          <li class="menu-item menu-item-tags">
+    <a href="/tags/" rel="section">
+      <i class="menu-item-icon fa fa-fw fa-tags"></i> <br />Tags</a>
+  </li>
+        
+        
+        
+          
+          <li class="menu-item menu-item-archives">
+    <a href="/archives/" rel="section">
+      <i class="menu-item-icon fa fa-fw fa-archive"></i> <br />Archives</a>
+  </li>
+        
+        
+        
+          
+          <li class="menu-item menu-item-about">
+    <a href="/about/" rel="section">
+      <i class="menu-item-icon fa fa-fw fa-user"></i> <br />About</a>
+  </li>
+
+      
+      
+    </ul>
+  
+
+  
+    
+
+  
+
+  
+</nav>
+
+
+
+  
+
+
+
+</div>
+    </header>
+
+    
+
+
+    <main id="main" class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+          <div id="content" class="content">
+            
+
+  <div id="posts" class="posts-expand">
+    
+
+  
+
+  
+  
+  
+
+  
+
+  <article class="post post-type-normal" itemscope itemtype="http://schema.org/Article">
+  
+  
+  
+  <div class="post-block">
+    <link itemprop="mainEntityOfPage" href="http://www.caosh.me/be-tech/canal-sync-db-over-http/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="name" content="曹书豪">
+      <meta itemprop="description" content="专注于互联网后端技术与可复用代码">
+      <meta itemprop="image" content="/images/avatar.gif">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="Blog.new '书豪'">
+    </span>
+
+    
+      <header class="post-header">
+
+        
+        
+          <h2 class="post-title" itemprop="name headline">基于Canal使用HTTP协议跨机房公网同步数据
+              
+            
+          </h2>
+        
+
+        <div class="post-meta">
+          <span class="post-time">
+
+            
+            
+            
+
+            
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">Posted on</span>
+              
+
+              
+                
+              
+
+              <time title="Created: 2018-01-07 11:42:28" itemprop="dateCreated datePublished" datetime="2018-01-07T11:42:28+08:00">2018-01-07</time>
+            
+
+            
+          </span>
+
+          
+            <span class="post-category" >
+            
+              <span class="post-meta-divider">|</span>
+            
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">In</span>
+              
+              
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing"><a href="/categories/be-tech/" itemprop="url" rel="index"><span itemprop="name">后端技术</span></a></span>
+
+                
+                
+              
+            </span>
+          
+
+          
+            
+          
+
+          
+          
+             <span id="/be-tech/canal-sync-db-over-http/" class="leancloud_visitors" data-flag-title="基于Canal使用HTTP协议跨机房公网同步数据">
+               <span class="post-meta-divider">|</span>
+               <span class="post-meta-item-icon">
+                 <i class="fa fa-eye"></i>
+               </span>
+               
+                 <span class="post-meta-item-text">Views: </span>
+               
+                 <span class="leancloud-visitors-count"></span>
+             </span>
+          
+
+          
+
+          
+
+          
+
+        </div>
+      </header>
+    
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+      
+
+      
+        <h1 id="前提"><a href="#前提" class="headerlink" title="前提"></a>前提</h1><p>MySQL数据库自带基于binlog的主从复制功能，在内网中实现数据备份、读写分离是比较容易的。但是，在跨机房环境下通过公网如此同步数据就会存在一些困难：</p>
+<ul>
+<li>安全性：直接在公网上暴露3306端口显然存在安全性问题</li>
+<li>网络稳定性：公网的网络抖动是常态，长连接难以维持</li>
+<li>配置复杂：在TCP协议上一个端口只能暴露一个服务实例，在互联网出口上需要配置一堆不同的端口映射至不同的数据库服务器</li>
+<li>扩展性：基于binlong的数据复制，无法实现数据过滤、转换</li>
+</ul>
+<a id="more"></a>
+<p>HTTP协议工作在TCP协议之上，使用HTTP协议同步数据，具有以下优势：</p>
+<ul>
+<li>配置灵活：公网出口可以只暴露80端口，通过location配置反向代理可以灵活配置多个服务实例</li>
+<li>安全性：基于http协议的安全配置比较容易实现</li>
+<li>网络稳定性：使用http协议，可以通过批量传输加重试机制实现数据可靠传输</li>
+<li>扩展性：应用层可以binlog进行过滤、转换</li>
+</ul>
+<hr>
+<h1 id="关键技术"><a href="#关键技术" class="headerlink" title="关键技术"></a>关键技术</h1><p>有句话是这样说的：</p>
+<blockquote>
+<p>计算机科学领域的任何问题，都可以通过增加一个间接的中间层来解决。<br>Any problem in computer science could be solved by another layer of indirection.</p>
+</blockquote>
+<p><a href="https://github.com/alibaba/canal" target="_blank" rel="noopener">Canal</a>就是这样的一个中间层，或者说中间件。Canal实现了MySQL数据复制协议，可以将自己“伪装”成一个slave，接收master推送过来的binlog并进行处理。</p>
+<p>Canal原理图</p>
+<p><img src="canal.jpg" alt="Canal"></p>
+<h2 id="binlog-row模式"><a href="#binlog-row模式" class="headerlink" title="binlog row模式"></a>binlog row模式</h2><p>MySQL的数据复制模式首选ROW模式。因为SQL模式是无法保证幂等性的，比如insert语句可能会产生重复行，带查询的update语句重复执行结果可能会发生变化。在ROW模式下，binlog传输的是每一行数据的变更，包括前值和后值，应用到从库上时可以实现幂等性。当然ROW模式的缺点是一条SQL可能会产生大量的行变更，影响同步效率。</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">[mysqld]</span><br><span class="line">log-bin=mysql-bin</span><br><span class="line">binlog-format=ROW</span><br></pre></td></tr></table></figure>
+<h2 id="数据封装"><a href="#数据封装" class="headerlink" title="数据封装"></a>数据封装</h2><p>使用Canal处理binlog时，不需要了解MySQL协议的细节，可以直接面向Canal重新封装的<code>Messsage</code>进行编程。</p>
+<p>Messsage是一个数据包，包含了唯一且自增的id和一组entries，entries的数量上限可以在get时通过batchSize参数指定。</p>
+<p><code>Entry</code>是Canal对binlog的封装，每个<code>Entry</code>包含的信息有：</p>
+<ul>
+<li>头信息，包括schema、table、binlog file name、binlog offset、event type、execute time等</li>
+<li>头信息中的EventType用于区分binlog事件类型，比如增删改、DDL等</li>
+<li>EntryType，有四种类型：事务开始和结束、行数据（ROWDATA）、心跳，其中ROWDATA包含了所有的数据变更，包括增删改和DDL等</li>
+<li>RowChange，通过解析Entry的storeValue得到，如果是增删改类型，包含了每一行数据变更的所有细节（RowData）：变更前每列值、变更后每列值；如果是SQL类型则包括原始的SQL语句</li>
+</ul>
+<p>有关CanalEntry的细节可以阅读Canal源码中的<a href="https://github.com/alibaba/canal/wiki/ClientExample" target="_blank" rel="noopener">ClientExample</a>。</p>
+<h2 id="数据消费模型"><a href="#数据消费模型" class="headerlink" title="数据消费模型"></a>数据消费模型</h2><p>Canal支持内嵌式和C/S模式调用。其中C/S模式需要启动独立的Server进程，应用作为Client连接Server而不是MySQL，并且使用protobuf作为数据协议。Server和Client都支持基于Zookeeper的HA，是推荐的使用方式。内嵌式是将Canal作为SDK直接使用，比较灵活但是不提供HA机制。</p>
+<h3 id="Server-Client交互流程"><a href="#Server-Client交互流程" class="headerlink" title="Server/Client交互流程"></a>Server/Client交互流程</h3><p><img src="canal-interaction.jpg" alt="Canal交互"></p>
+<ol>
+<li>connect 建立连接</li>
+<li>subscribe 开始订阅数据</li>
+<li>getWithoutAck 尝试获取数据且不自动ACK，其中batchSize参数可以指定数量上限，无数据时batchId为-1，此时客户端应适当休眠</li>
+<li>ack 处理成功，向Server发送ACK</li>
+<li>rollback 处理失败无法恢复，回滚消费点位</li>
+<li>unsubscribe 停止订阅数据</li>
+<li>disconnect 关闭连接</li>
+</ol>
+<p>示例代码：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">try</span> &#123;</span><br><span class="line">    MDC.put(<span class="string">"destination"</span>, destination);</span><br><span class="line">    connector.connect();</span><br><span class="line">    connector.subscribe();</span><br><span class="line">    <span class="keyword">while</span> (running) &#123;</span><br><span class="line">        <span class="comment">// 获取指定数量的数据</span></span><br><span class="line">        Message message = connector.getWithoutAck(batchSize);</span><br><span class="line">        <span class="keyword">long</span> batchId = message.getId();</span><br><span class="line">        <span class="keyword">if</span> (batchId == -<span class="number">1</span> || message.getEntries().isEmpty()) &#123;</span><br><span class="line">            <span class="comment">// 适当休眠一下</span></span><br><span class="line">            SleepUtils.sleep(<span class="number">1000</span>);</span><br><span class="line">        &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">            <span class="keyword">try</span> &#123;</span><br><span class="line">                onProcessEntries(message);</span><br><span class="line">                connector.ack(batchId);</span><br><span class="line">            &#125; <span class="keyword">catch</span> (Exception e) &#123;</span><br><span class="line">                connector.rollback(batchId);</span><br><span class="line">                <span class="comment">// 防止出错时的雪崩</span></span><br><span class="line">                SleepUtils.sleep(<span class="number">3000</span>);</span><br><span class="line">                <span class="keyword">throw</span> e;</span><br><span class="line">            &#125;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">&#125; <span class="keyword">catch</span> (Exception e) &#123;</span><br><span class="line">    logger.error(<span class="string">"process error!"</span>, e);</span><br><span class="line">&#125; <span class="keyword">finally</span> &#123;</span><br><span class="line">    connector.disconnect();</span><br><span class="line">    MDC.remove(<span class="string">"destination"</span>);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>完整的示例可以参考Canal源码中的<a href="https://github.com/alibaba/canal/wiki/ClientExample" target="_blank" rel="noopener">ClientExample</a>。</p>
+<h3 id="数据可靠消费机制"><a href="#数据可靠消费机制" class="headerlink" title="数据可靠消费机制"></a>数据可靠消费机制</h3><p><img src="canal-ack.jpg" alt="Canal ACK"></p>
+<p>Canal server使用RingBuffer缓冲binlog数据。</p>
+<ol>
+<li>当RingBuffer被填满，Canal不再接收MySQL推送的binlog数据，避免binlog洪峰冲垮server，RingBuffer末端的点位对应binlog的解析点位</li>
+<li>client ack之后，RingBuffer空间可以腾出接收新的数据，同时记录binlog消费点位，消费点位小于或等于解析点位</li>
+<li>client get和ack可以异步进行，get/ack使用两个cursor，其中ack cursor小于或等于get cursor。client可以连续get数据然后并发处理，但是ack必须串行化</li>
+</ol>
+<p>并发处理binlog必须非常谨慎。如果两个不同批次的数据包中包含同一行数据的变更，那么两个变更被应用到从库的顺序会影响到数据的一致性。</p>
+<h3 id="binlog点位存储"><a href="#binlog点位存储" class="headerlink" title="binlog点位存储"></a>binlog点位存储</h3><p>Canal支持使用内存、文件、Zookeeper存储binlog消费点位，其中Zookeeper是用于生产的首选方式。</p>
+<h3 id="批量消费机制"><a href="#批量消费机制" class="headerlink" title="批量消费机制"></a>批量消费机制</h3><p>在使用getWithoutAck批量消费数据时，实际到的数据量上限是<code>batchSize * memunit</code>。其中<code>memunit</code>中是server端配置的值。</p>
+<p>比如以下配置：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">canal.instance.memory.buffer.size = 16384</span><br><span class="line">canal.instance.memory.buffer.memunit = 1024</span><br><span class="line">canal.instance.memory.batch.mode = MEMSIZE</span><br></pre></td></tr></table></figure>
+<p>此时数据单位为<code>MEMSIZE</code>，即字节byte，内存中的RingBuffer大小为<code>16384 * 1024B</code>。如果客户端代码中getWithoutAck传2，那么每次批量获取的binlog数据量是不超过或略微超过<code>2 * 1024 B</code>，受server配置中的<code>canal.instance.memory.buffer.memunit</code>和<code>canal.instance.memory.batch.mode</code>配置影响。</p>
+<h2 id="HA机制"><a href="#HA机制" class="headerlink" title="HA机制"></a>HA机制</h2><h3 id="Canal-server-client-HA"><a href="#Canal-server-client-HA" class="headerlink" title="Canal server/client HA"></a>Canal server/client HA</h3><p>Canal的server/client都利用Zookeeper实现了HA机制。对于一个canal instance，同时只能有一个server和一个client在工作。如果集群中有多个server，只有一个server会正常工作，其他servers将处于挂起状态；当前工作的server挂掉之后，会有另一个server继续接替，同时client可以自动切换到新的server。Client的HA也采取类似机制。</p>
+<p>这是由binlog的特性决定的，如果binlog被并发消费并应用到从库，数据的一致性保证是个难题。</p>
+<h3 id="MySQL-HA"><a href="#MySQL-HA" class="headerlink" title="MySQL HA"></a>MySQL HA</h3><p>如果MySQL主库是集群式的，包括多主架构（比如Gelera cluster）和主备架构，Canal支持配置对MySQL的主备切换。多主架构下，每个MySQL节点的binlog点位往往不是相同的数值，此时可以使用timestamp而不是binlog  position作为点位参数。</p>
+<p>进一步了解Canal可以参考其<a href="https://github.com/alibaba/canal/wiki" target="_blank" rel="noopener">Wiki</a>。</p>
+<hr>
+<h1 id="技术实现"><a href="#技术实现" class="headerlink" title="技术实现"></a>技术实现</h1><h2 id="总体架构"><a href="#总体架构" class="headerlink" title="总体架构"></a>总体架构</h2><p><img src="network.png" alt="网络拓扑图"></p>
+<ol>
+<li>A机房部署主库、zookeeper、canal server、同步应用（extractor端in tomcat）</li>
+<li>B机房部署从库、nginx、同步应用（loader端in tomcat）</li>
+<li>extractor端作为canal client连接canal server，将binlog数据打包成message bundle通过公网post至B机房</li>
+<li>loader端接收通过nginx转发的请求数据，在一个事务里将message bundle里的所有数据变更应用至从库，然后向extractor返回结果</li>
+<li>如果loader写入失败，或者由于网络原因导致传输失败，extractor都进行重试直到成功，loader端保证数据写入的幂等性</li>
+<li>canal server、extractor、loader都支持集群部署实现高可用</li>
+</ol>
+<h2 id="Extractor端"><a href="#Extractor端" class="headerlink" title="Extractor端"></a>Extractor端</h2><p>Extractor端主要是集成canal client消费canal entries，将批量获取到的entries序列化并发送到loader端。为了实现可靠复制，extractor应当对请求进行重试，由loader负责保证幂等。</p>
+<p>Canal内部使用TCP协议和protobuf传输数据。到HTTP一层，推荐使用json作为序列化方式。比较简单的作法是将Canal entries直接toByteArray，再使用BASE64编码转为字符串形式，然后将一批entries组成json进行传输。</p>
+<blockquote>
+<p>BASE64编码推荐使用Guava的<code>BaseEncoding</code>类。</p>
+</blockquote>
+<h2 id="Loader端"><a href="#Loader端" class="headerlink" title="Loader端"></a>Loader端</h2><p>Loader端主要实现以下功能：</p>
+<ol>
+<li>接收数据并解析</li>
+<li>使用事务保证每个数据包的处理原子性</li>
+<li>在事务中，将每条RowChange应用到从库上，对每条增删改类的Canal entry构建增删改SQL并执行，对DDL类的Canal entry直接执行其SQL</li>
+</ol>
+<h3 id="RowChange处理"><a href="#RowChange处理" class="headerlink" title="RowChange处理"></a>RowChange处理</h3><p>考虑四类常见的RowChange事件，Insert、Update、Delete和DDL。</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">public</span> <span class="keyword">void</span> <span class="title">handle</span><span class="params">(CanalEntry.Entry entry, CanalEntry.RowChange rowChange)</span> <span class="keyword">throws</span> SQLException </span>&#123;</span><br><span class="line">    printEntry(entry, rowChange);</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (rowChange.getEventType() == CanalEntry.EventType.INSERT) &#123;</span><br><span class="line">        handleInsert(entry, rowChange);</span><br><span class="line">    &#125; <span class="keyword">else</span> <span class="keyword">if</span> (rowChange.getEventType() == CanalEntry.EventType.UPDATE) &#123;</span><br><span class="line">        handleUpdate(entry, rowChange);</span><br><span class="line">    &#125; <span class="keyword">else</span> <span class="keyword">if</span> (rowChange.getEventType() == CanalEntry.EventType.DELETE) &#123;</span><br><span class="line">        handleDelete(entry, rowChange);</span><br><span class="line">    &#125; <span class="keyword">else</span> <span class="keyword">if</span> (rowChange.hasSql()) &#123;</span><br><span class="line">        handleSql(entry, rowChange);</span><br><span class="line">    &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">        <span class="keyword">throw</span> <span class="keyword">new</span> UnsupportedEventTypeException(rowChange.getEventType());</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h3 id="Insert事件处理"><a href="#Insert事件处理" class="headerlink" title="Insert事件处理"></a>Insert事件处理</h3><p>对于Insert事件，要关心的数据是RowData中的后值，即<code>afterColumnsList</code>属性的值。例如：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">List&lt;CanalEntry.Column&gt; afterColumnsList = rowData.getAfterColumnsList();</span><br></pre></td></tr></table></figure>
+<p>带有主键参数的Insert语句是幂等的。RowData中包含所有列的值，Insert SQL应该涵盖表的所有列。需要注意的请求可能会重发，Insert语句可能因此产生键冲突而失败，因此loader必须容忍<code>MySQLIntegrityConstraintViolationException</code>异常。</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 注意mysql-connector-java中有两个同名类，这里要catch的是</span></span><br><span class="line"><span class="keyword">import</span> com.mysql.jdbc.exceptions.jdbc4.MySQLIntegrityConstraintViolationException;</span><br></pre></td></tr></table></figure>
+<p>Insert SQL的拼接是比较简单的，直接拼接所有字段即可。</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">private</span> <span class="keyword">void</span> <span class="title">handleInsert</span><span class="params">(CanalEntry.Entry entry, CanalEntry.RowChange rowChange)</span> <span class="keyword">throws</span> SQLException </span>&#123;</span><br><span class="line">    <span class="keyword">for</span> (CanalEntry.RowData rowData : rowChange.getRowDatasList()) &#123;</span><br><span class="line">        handleInsertRowData(entry, rowData);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">private</span> <span class="keyword">void</span> <span class="title">handleInsertRowData</span><span class="params">(CanalEntry.Entry entry, CanalEntry.RowData rowData)</span> <span class="keyword">throws</span> SQLException </span>&#123;</span><br><span class="line">    <span class="keyword">final</span> List&lt;CanalEntry.Column&gt; afterColumnsList = rowData.getAfterColumnsList();</span><br><span class="line">    <span class="keyword">if</span> (afterColumnsList.isEmpty()) &#123;</span><br><span class="line">        <span class="keyword">throw</span> <span class="keyword">new</span> ColumnsTooLessException(entry.getHeader().getSchemaName(), entry.getHeader().getTableName(), <span class="number">0</span>);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    StringBuilder sqlBuilder = <span class="keyword">new</span> StringBuilder(<span class="string">"insert into "</span>)</span><br><span class="line">            .append(entry.getHeader().getTableName())</span><br><span class="line">            .append(<span class="string">" ("</span>);</span><br><span class="line"></span><br><span class="line">    <span class="keyword">for</span> (Iterator&lt;CanalEntry.Column&gt; iterator = afterColumnsList.iterator(); iterator.hasNext(); ) &#123;</span><br><span class="line">        CanalEntry.Column column = iterator.next();</span><br><span class="line">        sqlBuilder.append(column.getName());</span><br><span class="line"></span><br><span class="line">        <span class="keyword">if</span> (iterator.hasNext()) &#123;</span><br><span class="line">            sqlBuilder.append(<span class="string">", "</span>);</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    sqlBuilder.append(<span class="string">") values ("</span>);</span><br><span class="line">    <span class="keyword">for</span> (Iterator&lt;CanalEntry.Column&gt; iterator = afterColumnsList.iterator(); iterator.hasNext(); ) &#123;</span><br><span class="line">        iterator.next();</span><br><span class="line">        sqlBuilder.append(<span class="string">"?"</span>);</span><br><span class="line"></span><br><span class="line">        <span class="keyword">if</span> (iterator.hasNext()) &#123;</span><br><span class="line">            sqlBuilder.append(<span class="string">", "</span>);</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    sqlBuilder.append(<span class="string">")"</span>);</span><br><span class="line">    logger.info(<span class="string">"Insert sql ==&gt; &#123;&#125;"</span>, sqlBuilder);</span><br><span class="line"></span><br><span class="line">    <span class="keyword">try</span> &#123;</span><br><span class="line">        PreparedStatement ps = connection.prepareStatement(sqlBuilder.toString());</span><br><span class="line">        <span class="keyword">int</span> i = <span class="number">1</span>;</span><br><span class="line">        <span class="keyword">for</span> (CanalEntry.Column column : afterColumnsList) &#123;</span><br><span class="line">            ps.setString(i, column.hasValue() ? column.getValue() : <span class="keyword">null</span>);</span><br><span class="line">            i++;</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="keyword">int</span> inserted = ps.executeUpdate();</span><br><span class="line">        Preconditions.checkArgument(inserted == <span class="number">1</span>, <span class="string">"Insert SQL should update 1 row exactly"</span>);</span><br><span class="line">    &#125; <span class="keyword">catch</span> (MySQLIntegrityConstraintViolationException e) &#123;</span><br><span class="line">        logger.warn(<span class="string">"Duplicated key"</span>, e);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h3 id="Update事件处理"><a href="#Update事件处理" class="headerlink" title="Update事件处理"></a>Update事件处理</h3><p>对于Update事件，需要关心的是后值中的所有被更新的列和前值中的主键列（主键可能会在Update事件中被更新）。</p>
+<p>基于主键而且不带查询的Update语句是幂等的。</p>
+<p>确定主键列需要使用<code>DESC</code>语句。可以从Entry的Header中得到schema name和table name，然后构建DESC语句。当然，表结构是可以缓存的。</p>
+<p>Update SQL中，where子句应当是所有主键列的equals条件，set子句应当仅包含Update事件中被更新的列，列是否被更新可以用<code>CanalEntry.Column#getUpdated</code>方法判断。</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">private</span> <span class="keyword">void</span> <span class="title">handleUpdate</span><span class="params">(CanalEntry.Entry entry, CanalEntry.RowChange rowChange)</span> <span class="keyword">throws</span> SQLException </span>&#123;</span><br><span class="line">    <span class="keyword">for</span> (CanalEntry.RowData rowData : rowChange.getRowDatasList()) &#123;</span><br><span class="line">        handleUpdateRowData(entry, rowData);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">private</span> <span class="keyword">void</span> <span class="title">handleUpdateRowData</span><span class="params">(CanalEntry.Entry entry, CanalEntry.RowData rowData)</span> <span class="keyword">throws</span> SQLException </span>&#123;</span><br><span class="line">    <span class="keyword">final</span> List&lt;CanalEntry.Column&gt; beforeColumnsList = rowData.getBeforeColumnsList();</span><br><span class="line">    <span class="keyword">final</span> List&lt;CanalEntry.Column&gt; afterColumnsList = rowData.getAfterColumnsList();</span><br><span class="line">    String schemaName = entry.getHeader().getSchemaName();</span><br><span class="line">    String tableName = entry.getHeader().getTableName();</span><br><span class="line">    <span class="keyword">if</span> (afterColumnsList.size() &lt; <span class="number">2</span>) &#123;</span><br><span class="line">        <span class="keyword">throw</span> <span class="keyword">new</span> ColumnsTooLessException(schemaName, tableName,</span><br><span class="line">                afterColumnsList.size());</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    StringBuilder sqlBuilder = <span class="keyword">new</span> StringBuilder(<span class="string">"update "</span>)</span><br><span class="line">            .append(tableName)</span><br><span class="line">            .append(<span class="string">" set"</span>);</span><br><span class="line"></span><br><span class="line">    <span class="keyword">for</span> (CanalEntry.Column column : afterColumnsList) &#123;</span><br><span class="line">        <span class="keyword">if</span> (column.getUpdated()) &#123;</span><br><span class="line">            sqlBuilder.append(<span class="string">" "</span>).append(column.getName()).append(<span class="string">" = ?,"</span>);</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    sqlBuilder.deleteCharAt(sqlBuilder.length() - <span class="number">1</span>);</span><br><span class="line">    sqlBuilder.append(<span class="string">" where "</span>);</span><br><span class="line"></span><br><span class="line">    <span class="keyword">final</span> Iterable&lt;String&gt; tablePrimaryKeyFields = tableMetaCache.getTablePrimaryKeyFields(schemaName, tableName);</span><br><span class="line">    <span class="keyword">for</span> (Iterator&lt;String&gt; iterator = tablePrimaryKeyFields.iterator(); iterator.hasNext(); ) &#123;</span><br><span class="line">        String primaryKeyField = iterator.next();</span><br><span class="line">        sqlBuilder.append(primaryKeyField).append(<span class="string">" = ?"</span>);</span><br><span class="line"></span><br><span class="line">        <span class="keyword">if</span> (iterator.hasNext()) &#123;</span><br><span class="line">            sqlBuilder.append(<span class="string">" and "</span>);</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    logger.info(<span class="string">"Update sql ==&gt; &#123;&#125;"</span>, sqlBuilder);</span><br><span class="line"></span><br><span class="line">    PreparedStatement ps = connection.prepareStatement(sqlBuilder.toString());</span><br><span class="line">    <span class="keyword">int</span> i = <span class="number">1</span>;</span><br><span class="line">    <span class="keyword">for</span> (CanalEntry.Column column : afterColumnsList) &#123;</span><br><span class="line">        <span class="keyword">if</span> (column.getUpdated()) &#123;</span><br><span class="line">            ps.setString(i, column.hasValue() ? column.getValue() : <span class="keyword">null</span>);</span><br><span class="line">            i++;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">for</span> (<span class="keyword">final</span> CanalEntry.Column column : beforeColumnsList) &#123;</span><br><span class="line">        <span class="keyword">boolean</span> isPrimaryKey = Iterables.any(tablePrimaryKeyFields, <span class="keyword">new</span> Predicate&lt;String&gt;() &#123;</span><br><span class="line">            <span class="meta">@Override</span></span><br><span class="line">            <span class="function"><span class="keyword">public</span> <span class="keyword">boolean</span> <span class="title">apply</span><span class="params">(String keyField)</span> </span>&#123;</span><br><span class="line">                <span class="keyword">return</span> keyField.equals(column.getName());</span><br><span class="line">            &#125;</span><br><span class="line">        &#125;);</span><br><span class="line">        <span class="keyword">if</span> (isPrimaryKey) &#123;</span><br><span class="line">            ps.setString(i, column.getValue());</span><br><span class="line">            i++;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">int</span> updated = ps.executeUpdate();</span><br><span class="line">    <span class="keyword">if</span> (updated != <span class="number">1</span>) &#123;</span><br><span class="line">        logger.warn(<span class="string">"Update SQL should update 1 row exactly"</span>);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h3 id="Delete事件处理"><a href="#Delete事件处理" class="headerlink" title="Delete事件处理"></a>Delete事件处理</h3><p>对于Delete事件，需要关心的是前值中的所有主键列。使用所有主键列的equals条件构建Delete SQL即可。</p>
+<p>基于主键的Delete语句是幂等的。</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">private</span> <span class="keyword">void</span> <span class="title">handleDelete</span><span class="params">(CanalEntry.Entry entry, CanalEntry.RowChange rowChange)</span> <span class="keyword">throws</span> SQLException </span>&#123;</span><br><span class="line">    <span class="keyword">for</span> (CanalEntry.RowData rowData : rowChange.getRowDatasList()) &#123;</span><br><span class="line">        handleDeleteRowData(entry, rowData);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">private</span> <span class="keyword">void</span> <span class="title">handleDeleteRowData</span><span class="params">(CanalEntry.Entry entry, CanalEntry.RowData rowData)</span> <span class="keyword">throws</span> SQLException </span>&#123;</span><br><span class="line">    <span class="keyword">final</span> List&lt;CanalEntry.Column&gt; beforeColumnsList = rowData.getBeforeColumnsList();</span><br><span class="line">    String schemaName = entry.getHeader().getSchemaName();</span><br><span class="line">    String tableName = entry.getHeader().getTableName();</span><br><span class="line">    <span class="keyword">if</span> (beforeColumnsList.isEmpty()) &#123;</span><br><span class="line">        <span class="keyword">throw</span> <span class="keyword">new</span> ColumnsTooLessException(schemaName, tableName, <span class="number">0</span>);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    StringBuilder sqlBuilder = <span class="keyword">new</span> StringBuilder(<span class="string">"delete from "</span>)</span><br><span class="line">            .append(entry.getHeader().getTableName())</span><br><span class="line">            .append(<span class="string">" where "</span>);</span><br><span class="line"></span><br><span class="line">    <span class="keyword">final</span> Iterable&lt;String&gt; tablePrimaryKeyFields = tableMetaCache.getTablePrimaryKeyFields(schemaName, tableName);</span><br><span class="line">    <span class="keyword">for</span> (Iterator&lt;String&gt; iterator = tablePrimaryKeyFields.iterator(); iterator.hasNext(); ) &#123;</span><br><span class="line">        String primaryKeyField = iterator.next();</span><br><span class="line">        sqlBuilder.append(primaryKeyField).append(<span class="string">" = ?"</span>);</span><br><span class="line"></span><br><span class="line">        <span class="keyword">if</span> (iterator.hasNext()) &#123;</span><br><span class="line">            sqlBuilder.append(<span class="string">" and "</span>);</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    logger.info(<span class="string">"Delete sql ==&gt; &#123;&#125;"</span>, sqlBuilder);</span><br><span class="line"></span><br><span class="line">    PreparedStatement ps = connection.prepareStatement(sqlBuilder.toString());</span><br><span class="line">    <span class="keyword">int</span> i = <span class="number">1</span>;</span><br><span class="line">    <span class="keyword">for</span> (<span class="keyword">final</span> CanalEntry.Column column : beforeColumnsList) &#123;</span><br><span class="line">        <span class="keyword">boolean</span> isPrimaryKey = Iterables.any(tablePrimaryKeyFields, <span class="keyword">new</span> Predicate&lt;String&gt;() &#123;</span><br><span class="line">            <span class="meta">@Override</span></span><br><span class="line">            <span class="function"><span class="keyword">public</span> <span class="keyword">boolean</span> <span class="title">apply</span><span class="params">(String keyField)</span> </span>&#123;</span><br><span class="line">                <span class="keyword">return</span> keyField.equals(column.getName());</span><br><span class="line">            &#125;</span><br><span class="line">        &#125;);</span><br><span class="line">        <span class="keyword">if</span> (isPrimaryKey) &#123;</span><br><span class="line">            ps.setString(i, column.getValue());</span><br><span class="line">            i++;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">int</span> deleted = ps.executeUpdate();</span><br><span class="line">    <span class="keyword">if</span> (deleted != <span class="number">1</span>) &#123;</span><br><span class="line">        logger.warn(<span class="string">"Update SQL should update 1 row exactly"</span>);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h3 id="DDL事件处理"><a href="#DDL事件处理" class="headerlink" title="DDL事件处理"></a>DDL事件处理</h3><p>在binlog row模式下，DDL仍然以SQL语句的形式进行同步。在loader端直接执行该SQL即可。</p>
+<p>由于表名、列名的唯一性，对表的DDL操作（create/alter/drop等）是幂等的。</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">private</span> <span class="keyword">void</span> <span class="title">handleSql</span><span class="params">(CanalEntry.Entry entry, CanalEntry.RowChange rowChange)</span> <span class="keyword">throws</span> SQLException </span>&#123;</span><br><span class="line">    Preconditions.checkArgument(rowChange.hasSql(), <span class="string">"RowChange should has SQL"</span>);</span><br><span class="line">    connection.createStatement().execute(rowChange.getSql());</span><br><span class="line">    logger.info(<span class="string">"SQL executed"</span>);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h2 id="心跳监控"><a href="#心跳监控" class="headerlink" title="心跳监控"></a>心跳监控</h2><p>高可用的系统少不掉业务监控。Canal的设计为实现监控提供了便利。在Canal server配置中，可以配置心跳SQL，Canal server会定期在主库上执行心跳SQL。</p>
+<p>心跳SQL的默认值是：</p>
+<figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">insert</span> <span class="keyword">into</span> retl.xdual <span class="keyword">values</span>(<span class="number">1</span>,<span class="keyword">now</span>()) <span class="keyword">on</span> <span class="keyword">duplicate</span> <span class="keyword">key</span> <span class="keyword">update</span> x=<span class="keyword">now</span>()</span><br></pre></td></tr></table></figure>
+<p>配置参数如下：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">canal.instance.detecting.enable = true ## 需要开启心跳检查</span><br><span class="line">canal.instance.detecting.sql = insert into retl.xdual values(1,now()) on duplicate key update x=now() ##心跳检查sql，也可以选择类似select 1的query语句</span><br><span class="line">canal.instance.detecting.interval.time = 3 ##心跳检查频率</span><br><span class="line">canal.instance.detecting.retry.threshold = 3  ## 心跳检查失败次数阀值，超过该阀值后会触发mysql链接切换，比如切换到standby机器上继续消费binlog</span><br><span class="line">canal.instance.detecting.heartbeatHaEnable = true ## 心跳检查超过失败次数阀值后，是否开启master/standby的切换.</span><br></pre></td></tr></table></figure>
+<p>一方面，心跳SQL可以用于检测MySQL主库的可用性，进一步可以实现MySQL主库的切换。</p>
+<p>另一方面，如果心跳表同步到从库，可以通过在从库上查询最后一次更新时间戳、并判断是否超时的方法来监控数据复制的正常与否。</p>
+<p>对于以上心跳SQL，显然需要创建相应的库和表。</p>
+<figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">create</span> <span class="keyword">database</span> retl;</span><br><span class="line"><span class="keyword">use</span> retl;</span><br><span class="line"><span class="keyword">create</span> <span class="keyword">table</span> xdual(<span class="keyword">id</span> <span class="built_in">int</span> primary <span class="keyword">key</span>, x <span class="keyword">timestamp</span>);</span><br></pre></td></tr></table></figure>
+<p>同时，如果需要在从库端加监控，应该在<code>canal.instance.filter.regex</code>配置中包含该表。</p>
+<hr>
+<h1 id="延伸"><a href="#延伸" class="headerlink" title="延伸"></a>延伸</h1><p>在有稳定的专线而且端口开放没有太多限制的情况下，可以考虑使用阿里另一个开源项目<a href="https://github.com/alibaba/otter" target="_blank" rel="noopener">Otter</a>。Otter是基于Canal实现的完整的数据同步解决方案，可以使用UI灵活配置、管理数据同步。</p>
+
+      
+    </div>
+
+    
+
+    
+    
+    
+
+    
+
+    
+
+    
+      <div>
+        <ul class="post-copyright">
+  <li class="post-copyright-author">
+    <strong>Post author:  </strong>曹书豪</li>
+  <li class="post-copyright-link">
+    <strong>Post link: </strong>
+    <a href="http://www.caosh.me/be-tech/canal-sync-db-over-http/" title="基于Canal使用HTTP协议跨机房公网同步数据">http://www.caosh.me/be-tech/canal-sync-db-over-http/</a>
+  </li>
+  <li class="post-copyright-license">
+    <strong>Copyright Notice:  </strong>All articles in this blog are licensed under <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" rel="external nofollow" target="_blank">CC BY-NC-SA 4.0</a> unless stating additionally.</li>
+</ul>
+
+      </div>
+    
+
+    <footer class="post-footer">
+      
+        <div class="post-tags">
+          
+            <a href="/tags/Canal/" rel="tag"># Canal</a>
+          
+            <a href="/tags/HTTP/" rel="tag"># HTTP</a>
+          
+            <a href="/tags/MySQL/" rel="tag"># MySQL</a>
+          
+            <a href="/tags/数据同步/" rel="tag"># 数据同步</a>
+          
+            <a href="/tags/数据库/" rel="tag"># 数据库</a>
+          
+            <a href="/tags/分布式系统/" rel="tag"># 分布式系统</a>
+          
+            <a href="/tags/一致性/" rel="tag"># 一致性</a>
+          
+            <a href="/tags/高可用/" rel="tag"># 高可用</a>
+          
+            <a href="/tags/幂等性/" rel="tag"># 幂等性</a>
+          
+        </div>
+      
+
+      
+      
+      
+
+      
+        <div class="post-nav">
+          <div class="post-nav-next post-nav-item">
+            
+              <a href="/be-tech/rabbitmq-pull-multiple/" rel="next" title="RabbitMQ拉模式批量消费消息">
+                <i class="fa fa-chevron-left"></i> RabbitMQ拉模式批量消费消息
+              </a>
+            
+          </div>
+
+          <span class="post-nav-divider"></span>
+
+          <div class="post-nav-prev post-nav-item">
+            
+              <a href="/solution/date-serialize-bug-timezone/" rel="prev" title="Date类型字段反序列化后值发生变化问题">
+                Date类型字段反序列化后值发生变化问题 <i class="fa fa-chevron-right"></i>
+              </a>
+            
+          </div>
+        </div>
+      
+
+      
+      
+    </footer>
+  </div>
+  
+  
+  
+  </article>
+
+
+  </div>
+
+
+          </div>
+          
+
+  
+
+
+
+        </div>
+        
+          
+  
+  <div class="sidebar-toggle">
+    <div class="sidebar-toggle-line-wrap">
+      <span class="sidebar-toggle-line sidebar-toggle-line-first"></span>
+      <span class="sidebar-toggle-line sidebar-toggle-line-middle"></span>
+      <span class="sidebar-toggle-line sidebar-toggle-line-last"></span>
+    </div>
+  </div>
+
+  <aside id="sidebar" class="sidebar">
+    
+    <div class="sidebar-inner">
+
+      
+
+      
+        <ul class="sidebar-nav motion-element">
+          <li class="sidebar-nav-toc sidebar-nav-active" data-target="post-toc-wrap">
+            Table of Contents
+          </li>
+          <li class="sidebar-nav-overview" data-target="site-overview-wrap">
+            Overview
+          </li>
+        </ul>
+      
+
+      <section class="site-overview-wrap sidebar-panel">
+        <div class="site-overview">
+          <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+            
+              <p class="site-author-name" itemprop="name">曹书豪</p>
+              <p class="site-description motion-element" itemprop="description">专注于互联网后端技术与可复用代码</p>
+          </div>
+
+          
+            <nav class="site-state motion-element">
+              
+                <div class="site-state-item site-state-posts">
+                
+                  <a href="/archives/">
+                
+                    <span class="site-state-item-count">15</span>
+                    <span class="site-state-item-name">posts</span>
+                  </a>
+                </div>
+              
+
+              
+                
+                
+                <div class="site-state-item site-state-categories">
+                  <a href="/categories/index.html">
+                    
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                    <span class="site-state-item-count">4</span>
+                    <span class="site-state-item-name">categories</span>
+                  </a>
+                </div>
+              
+
+              
+                
+                
+                <div class="site-state-item site-state-tags">
+                  <a href="/tags/index.html">
+                    
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                    <span class="site-state-item-count">36</span>
+                    <span class="site-state-item-name">tags</span>
+                  </a>
+                </div>
+              
+            </nav>
+          
+
+          
+
+          
+            <div class="links-of-author motion-element">
+              
+                <span class="links-of-author-item">
+                  <a href="https://github.com/shuhaoc" target="_blank" title="GitHub" rel="external nofollow"><i class="fa fa-fw fa-github"></i>GitHub</a>
+                  
+                </span>
+              
+                <span class="links-of-author-item">
+                  <a href="mailto:this@caosh.me" target="_blank" title="E-Mail" rel="external nofollow"><i class="fa fa-fw fa-envelope"></i>E-Mail</a>
+                  
+                </span>
+              
+            </div>
+          
+
+          
+          
+
+          
+          
+            <div class="links-of-blogroll motion-element links-of-blogroll-block">
+              <div class="links-of-blogroll-title">
+                <i class="fa  fa-fw fa-link"></i>
+                Links
+              </div>
+              <ul class="links-of-blogroll-list">
+                
+                  <li class="links-of-blogroll-item">
+                    <a href="https://www.dozer.cc/" title="Dozer" target="_blank">Dozer</a>
+                  </li>
+                
+                  <li class="links-of-blogroll-item">
+                    <a href="https://roc-wong.github.io/" title="Roc wong" target="_blank">Roc wong</a>
+                  </li>
+                
+                  <li class="links-of-blogroll-item">
+                    <a href="http://jingege.me/" title="晋哥哥的私房钱" target="_blank">晋哥哥的私房钱</a>
+                  </li>
+                
+                  <li class="links-of-blogroll-item">
+                    <a href="https://blog.atcumt.com/" title="翔·工作室" target="_blank">翔·工作室</a>
+                  </li>
+                
+              </ul>
+            </div>
+          
+
+          
+            
+          
+          
+
+        </div>
+      </section>
+
+      
+      <!--noindex-->
+        <section class="post-toc-wrap motion-element sidebar-panel sidebar-panel-active">
+          <div class="post-toc">
+
+            
+              
+            
+
+            
+              <div class="post-toc-content"><ol class="nav"><li class="nav-item nav-level-1"><a class="nav-link" href="#前提"><span class="nav-number">1.</span> <span class="nav-text">前提</span></a></li><li class="nav-item nav-level-1"><a class="nav-link" href="#关键技术"><span class="nav-number">2.</span> <span class="nav-text">关键技术</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#binlog-row模式"><span class="nav-number">2.1.</span> <span class="nav-text">binlog row模式</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#数据封装"><span class="nav-number">2.2.</span> <span class="nav-text">数据封装</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#数据消费模型"><span class="nav-number">2.3.</span> <span class="nav-text">数据消费模型</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#Server-Client交互流程"><span class="nav-number">2.3.1.</span> <span class="nav-text">Server/Client交互流程</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#数据可靠消费机制"><span class="nav-number">2.3.2.</span> <span class="nav-text">数据可靠消费机制</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#binlog点位存储"><span class="nav-number">2.3.3.</span> <span class="nav-text">binlog点位存储</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#批量消费机制"><span class="nav-number">2.3.4.</span> <span class="nav-text">批量消费机制</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#HA机制"><span class="nav-number">2.4.</span> <span class="nav-text">HA机制</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#Canal-server-client-HA"><span class="nav-number">2.4.1.</span> <span class="nav-text">Canal server/client HA</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#MySQL-HA"><span class="nav-number">2.4.2.</span> <span class="nav-text">MySQL HA</span></a></li></ol></li></ol></li><li class="nav-item nav-level-1"><a class="nav-link" href="#技术实现"><span class="nav-number">3.</span> <span class="nav-text">技术实现</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#总体架构"><span class="nav-number">3.1.</span> <span class="nav-text">总体架构</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#Extractor端"><span class="nav-number">3.2.</span> <span class="nav-text">Extractor端</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#Loader端"><span class="nav-number">3.3.</span> <span class="nav-text">Loader端</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#RowChange处理"><span class="nav-number">3.3.1.</span> <span class="nav-text">RowChange处理</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#Insert事件处理"><span class="nav-number">3.3.2.</span> <span class="nav-text">Insert事件处理</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#Update事件处理"><span class="nav-number">3.3.3.</span> <span class="nav-text">Update事件处理</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#Delete事件处理"><span class="nav-number">3.3.4.</span> <span class="nav-text">Delete事件处理</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#DDL事件处理"><span class="nav-number">3.3.5.</span> <span class="nav-text">DDL事件处理</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#心跳监控"><span class="nav-number">3.4.</span> <span class="nav-text">心跳监控</span></a></li></ol></li><li class="nav-item nav-level-1"><a class="nav-link" href="#延伸"><span class="nav-number">4.</span> <span class="nav-text">延伸</span></a></li></ol></div>
+            
+
+          </div>
+        </section>
+      <!--/noindex-->
+      
+
+      
+
+    </div>
+  </aside>
+
+
+        
+      </div>
+    </main>
+
+    <footer id="footer" class="footer">
+      <div class="footer-inner">
+        <div class="copyright">&copy; 2017 – <span itemprop="copyrightYear">2018</span>
+  <span class="with-love" id="animate">
+    <i class="fa fa-user"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">曹书豪</span>
+
+  
+
+  
+</div>
+
+
+  
+
+
+
+  <div class="powered-by">Powered by <a class="theme-link" target="_blank" rel="external nofollow" href="https://hexo.io">Hexo</a> v3.7.1</div>
+
+
+
+  <span class="post-meta-divider">|</span>
+
+
+
+  <div class="theme-info">Theme – <a class="theme-link" target="_blank" rel="external nofollow" href="https://theme-next.org">NexT.Mist</a> v6.4.0</div>
+
+
+
+
+        
+
+
+
+
+
+
+
+
+        
+      </div>
+    </footer>
+
+    
+      <div class="back-to-top">
+        <i class="fa fa-arrow-up"></i>
+        
+      </div>
+    
+
+    
+	
+    
+
+    
+  </div>
+
+  
+
+<script type="text/javascript">
+  if (Object.prototype.toString.call(window.Promise) !== '[object Function]') {
+    window.Promise = null;
+  }
+</script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+  
+    <script type="text/javascript" src="http://oyn0cy9wg.bkt.clouddn.com/blog/lib/jquery/index.js"></script>
+  
+
+  
+  
+    <script type="text/javascript" src="http://oyn0cy9wg.bkt.clouddn.com/blog/lib/velocity/velocity.min.js"></script>
+  
+
+  
+  
+    <script type="text/javascript" src="http://oyn0cy9wg.bkt.clouddn.com/blog/lib/velocity/velocity.ui.min.js"></script>
+  
+
+
+  
+
+
+  <script type="text/javascript" src="/js/src/utils.js?v=6.4.0"></script>
+
+  <script type="text/javascript" src="/js/src/motion.js?v=6.4.0"></script>
+
+
+
+  
+  
+
+  
+  <script type="text/javascript" src="/js/src/scrollspy.js?v=6.4.0"></script>
+<script type="text/javascript" src="/js/src/post-details.js?v=6.4.0"></script>
+
+
+
+  
+
+
+  <script type="text/javascript" src="/js/src/bootstrap.js?v=6.4.0"></script>
+
+
+
+  
+
+
+
+  
+
+
+
+
+
+
+
+
+
+
+  
+
+
+
+
+
+  
+
+  
+  <script>
+    
+    function addCount(Counter) {
+      var $visitors = $(".leancloud_visitors");
+      var url = $visitors.attr('id').trim();
+      var title = $visitors.attr('data-flag-title').trim();
+
+      Counter('get', '/classes/Counter', { where: JSON.stringify({ url }) })
+        .done(function ({ results }) {
+          if (results.length > 0) {
+            var counter = results[0];
+            
+            Counter('put', `/classes/Counter/${counter.objectId}`, JSON.stringify({ time: { "__op":"Increment", "amount":1 } }))
+            
+            .done(function () {
+                  var $element = $(document.getElementById(url));
+                  $element.find('.leancloud-visitors-count').text(counter.time + 1);
+            })
+            
+            .fail(function ({ responseJSON }) {
+                console.log('Failed to save Visitor num, with error message: ' + responseJSON.error);
+            })
+          } else {
+            
+              Counter('post', '/classes/Counter', JSON.stringify({ title: title, url: url, time: 1}))
+                .done(function () {
+                  var $element = $(document.getElementById(url));
+                  $element.find('.leancloud-visitors-count').text(1);
+                })
+                .fail(function () {
+                  console.log('Failed to create');
+                });
+            
+          }
+        })
+      .fail(function ({ responseJSON }) {
+        console.log('LeanCloud Counter Error:' + responseJSON.code + " " + responseJSON.error);
+      });
+    }
+    
+
+    $(function() {
+      $.get('https://app-router.leancloud.cn/2/route?appId=' + "TTmRFEaTeIaPpvpREjwBW7Us-gzGzoHsz")
+        .done(function ({ api_server }) {
+          var Counter = function (method, url, data) {
+            return $.ajax({
+              method: method,
+              url: `https://${api_server}/1.1${url}`,
+              headers: {
+                'X-LC-Id': "TTmRFEaTeIaPpvpREjwBW7Us-gzGzoHsz",
+                'X-LC-Key': "NGwl0ufyzGnytmSoJNbuS96J",
+                'Content-Type': 'application/json',
+              },
+              data: data,
+            });
+          };
+          
+          addCount(Counter);
+          
+        })
+    });
+  </script>
+
+
+
+  
+
+  
+
+  
+
+  
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  <script type="text/javascript">
+    if (window.location.href.indexOf('caosh.me') >= 0) {
+    var _hmt = _hmt || [];
+    (function() {
+      var hm = document.createElement("script");
+      hm.src = "https://hm.baidu.com/hm.js?d60ebc8b060b119190e1a76c13d255ed";
+      var s = document.getElementsByTagName("script")[0];
+      s.parentNode.insertBefore(hm, s);
+    })();
+    } else {
+    console.info('Test environment, remove baidu statistics js');
+    }
+  </script>
+</body>
+</html>
